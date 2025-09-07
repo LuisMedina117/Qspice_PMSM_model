@@ -1,8 +1,8 @@
-// Automatically generated C++ file on Tue Aug 26 21:46:54 2025
+// Automatically generated C++ file on Sun Aug 17 19:22:51 2025
 //
 // To build with Digital Mars C++ Compiler: 
 //
-//    dmc -mn -WD svpwm_model.cpp kernel32.lib
+//    dmc -mn -WD pmsm_model_dll.cpp kernel32.lib
 
 #include <malloc.h>
 #include <math.h>
@@ -10,12 +10,6 @@
 #ifndef PI
 #define PI 3.14159265
 #endif
-
-// Maximum rise/dead time
-#define dt_max 10e-9
-
-// Constants
-#define const_2_sqrt3 1.154700538 // 2/sqrt(3)
 
 extern "C" __declspec(dllexport) void (*bzero)(void *ptr, unsigned int count)   = 0;
 
@@ -41,171 +35,104 @@ union uData
 int __stdcall DllMain(void *module, unsigned int reason, void *reserved) { return 1; }
 
 // #undef pin names lest they collide with names in any header file(s) you might include.
-#undef HS_U
-#undef LS_U
-#undef HS_V
-#undef LS_V
-#undef HS_W
-#undef LS_W
-#undef Theta
-#undef Amplitude
+#undef u_vW
+#undef u_vV
+#undef u_vU
+#undef y_iU
+#undef y_iV
+#undef y_iW
+#undef y_th
+#undef y_w
+#undef y_tq
+#undef y_vd
+#undef y_vq
+#undef u_id
+#undef u_iq
 
-struct sSVPWM_MODEL
+struct sPMSM_MODEL_DLL
 {
-   // declare the structure here
-   double delta_t;
-   double t_prev;
-   double t_nextE;      // Time of next event
-   double t_mU_up;      // Time of U phase HIGH state
-   double t_mV_up;      // Time of V phase HIGH state
-   double t_mW_up;      // Time of W phase HIGH state
-   double t_mU_down;    // Time of U phase LOW state
-   double t_mV_down;    // Time of V phase LOW state
-   double t_mW_down;    // Time of W phase LOW state
-   double t_next_cycle;
-   bool trigger;
-   bool s_U;
-   bool s_V;
-   bool s_W;
-   int sector;
-   double m_U;
-   double m_V;
-   double m_W;
-   long int ticks;
+  // declare the structure here
+  double x_th_n1;    // Previous theta
+  double x_w_n1;     // Previous omega
+  double y_tq_n1;    // Previous torque
+  double t_n1;       // Previous time
+  bool initialized;  // Initialization flag
 };
 
-extern "C" __declspec(dllexport) void svpwm_model(struct sSVPWM_MODEL **opaque, double t, union uData *data)
+extern "C" __declspec(dllexport) void pmsm_model_dll(struct sPMSM_MODEL_DLL **opaque, double t, union uData *data)
 {
-   double Theta     = data[0].d; // input
-   double Amplitude = data[1].d; // input
-   double Tpwm      = data[2].d; // input parameter
-   bool  &U         = data[3].b; // output
-   bool  &V         = data[4].b; // output
-   bool  &W         = data[5].b; // output
-
-   double a = 0;
-   double b = 0;
-
+   double  u_vW  = data[ 0].d; // input
+   double  u_vV  = data[ 1].d; // input
+   double  u_vU  = data[ 2].d; // input
+   double  u_id  = data[ 3].d; // input
+   double  u_iq  = data[ 4].d; // input
+   double  pp    = data[ 5].d; // input parameter
+   double  J     = data[ 6].d; // input parameter
+   double  B     = data[ 7].d; // input parameter
+   double  ROUT  = data[ 8].d; // input parameter
+   double  Ld    = data[ 9].d; // input parameter
+   double  Lq    = data[10].d; // input parameter
+   double  Psi   = data[11].d; // input parameter
+   double  w0    = data[12].d; // input parameter
+   double  Tload = data[13].d; // input parameter
+   double &y_iU  = data[14].d; // output
+   double &y_iV  = data[15].d; // output
+   double &y_iW  = data[16].d; // output
+   double &y_th  = data[17].d; // output
+   double &y_w   = data[18].d; // output
+   double &y_tq  = data[19].d; // output
+   double &y_vd  = data[20].d; // output
+   double &y_vq  = data[21].d; // output
 
    if(!*opaque)
    {
-      *opaque = (struct sSVPWM_MODEL *) malloc(sizeof(struct sSVPWM_MODEL));
-      bzero(*opaque, sizeof(struct sSVPWM_MODEL));
+      *opaque = (struct sPMSM_MODEL_DLL *) malloc(sizeof(struct sPMSM_MODEL_DLL));
+      bzero(*opaque, sizeof(struct sPMSM_MODEL_DLL));
    }
-   struct sSVPWM_MODEL *inst = *opaque;
+   struct sPMSM_MODEL_DLL *inst = *opaque;
 
 // Implement module evaluation code here:
+   // Apply initialization
+   if (inst->initialized == 0){
+      inst->x_w_n1 = w0;
+      inst->initialized = 1;
+   }
+   // Time step
+   double t_step = t-inst->t_n1;
+   // Torque calculation
+   y_tq = 3.0/2.0*pp*(u_iq*(u_id*Ld+Psi)-u_id*u_iq*Lq);
+   // Integration using trapezoidal rule
+   // State omega
+   y_w = (t_step/2.0*(-B*inst->x_w_n1 +y_tq +inst->y_tq_n1 -Tload) +J*inst->x_w_n1)/(J+B*t_step/2.0);
+   // State theta
+   y_th = t_step/2.0*(y_w +inst->x_w_n1) +inst->x_th_n1;
+   // Wrap to 2*pi
+   if(y_th > 2.0*PI){
+      y_th = y_th - 2.0*PI;
+   }
+   // Update previous values
+   inst->t_n1 = t;
+   inst->x_w_n1 = y_w;
+   inst->x_th_n1 = y_th;
+   inst->y_tq_n1 = y_tq;
 
-    // By default, set max time step according to next event
-    inst->delta_t = inst->t_nextE - t;
+   // Voltage transformation
+   y_vd = 2.0/3.0*(cos(y_th*pp)*u_vU +cos(y_th*pp-2.0*PI/3.0)*u_vV +cos(y_th*pp+2.0*PI/3.0)*u_vW);
+   y_vq = -2.0/3.0*(sin(y_th*pp)*u_vU +sin(y_th*pp-2.0*PI/3.0)*u_vV +sin(y_th*pp+2.0*PI/3.0)*u_vW);
 
-    // Verifies if an event has been reached
-    if(t >= inst->t_nextE){
+   // Current transformation
+   y_iU = cos(y_th*pp)*u_id -sin(y_th*pp)*u_iq;
+   y_iV = cos(y_th*pp-2.0*PI/3.0)*u_id -sin(y_th*pp-2.0*PI/3.0)*u_iq;
+   y_iW = cos(y_th*pp+2.0*PI/3.0)*u_id -sin(y_th*pp+2.0*PI/3.0)*u_iq;
 
-        // Trigger update if a cycle has been completed
-        if(t >= inst->t_next_cycle)
-            inst->trigger = 1;
-
-        // Set next time step to defined rise/fall time
-        inst->delta_t = dt_max;
-
-        // Change corresponding output
-        if(not(inst->s_U))   // Phase U
-            if(t >= inst->t_mU_up){
-            inst->s_U = 1;
-            U = 1;
-            }
-        else
-            if(t >= inst->t_mU_down){
-            inst->s_U = 0;
-            U = 0;
-            }
-        if(not(inst->s_V))   // Phase V
-            if(t >= inst->t_mV_up){
-            inst->s_V = 1;
-            V = 1;
-            }
-        else
-            if(t >= inst->t_mV_down){
-            inst->s_V = 0;
-            V = 0;
-            }
-        if(not(inst->s_W))   // Phase W
-            if(t >= inst->t_mW_up){
-            inst->s_W = 1;
-            W = 1;
-            }
-        else
-            if(t >= inst->t_mW_down){
-            inst->s_W = 0;
-            W = 0;
-            }
-        
-        // Update next event
-        update_next_event(inst, t);
-    }
-
-
-    // Update event times after a PWM cycle is completed
-    if(inst->trigger){
-         
-         // Find sector
-         inst->sector = int(6*Theta/(2*PI))+1;
-         // Calculate coeficients
-         a = const_2_sqrt3;
-         b = const_2_sqrt3;
-         switch (inst->sector){
-            case 1:
-               /* code */
-               break;
-            default:
-               break;
-         }
-         // Next PWM cycle start
-         inst->t_next_cycle = (inst->ticks+1) * Tpwm;
-         
-
-         // Update tick count 
-         inst->ticks++;
-         // Reset trigger
-         inst->trigger = 0;
-    }
 }
 
-// Update time of the next event
-void update_next_event(sSVPWM_MODEL *inst, const double t){
-   // Find next event 
-   inst->t_nextE = fmin(fmax(inst->t_next_cycle,t), 
-      fmin(fmax(inst->t_mU_down,t), 
-         fmin(fmax(inst->t_mV_down,t), 
-            fmin(fmax(inst->t_mW_down,t), 
-               fmin(fmax(inst->t_mU_up,t), 
-                  fmin(fmax(inst->t_mV_up,t), fmax(inst->t_mW_up,t)))))));
-   return;
-}
-
-// Find minimum
-double fmin(double a, double b){
-   if(a <= b)
-      return a;
-   return b;
-}
-
-// Find maximum
-double fmax(double a, double b){
-   if(a >= b)
-      return a;
-   return b;
-}
-
-extern "C" __declspec(dllexport) double MaxExtStepSize(struct sSVPWM_MODEL *inst, double t)
+extern "C" __declspec(dllexport) double MaxExtStepSize(struct sPMSM_MODEL_DLL *inst, double t)
 {
-   //return 1e308; // implement a good choice of max timestep size that depends on struct sSVPWM_MODEL
-   if (inst->delta_t <= 0) return 1e308;
-   return inst->delta_t;
+   return 1e308; // implement a good choice of max timestep size that depends on struct sPMSM_MODEL_DLL
 }
 
-extern "C" __declspec(dllexport) void Destroy(struct sSVPWM_MODEL *inst)
+extern "C" __declspec(dllexport) void Destroy(struct sPMSM_MODEL_DLL *inst)
 {
    free(inst);
 }
