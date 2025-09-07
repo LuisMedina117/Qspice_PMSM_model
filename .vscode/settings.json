@@ -1,0 +1,21 @@
+{
+    "terminal.integrated.profiles.windows": {
+        "PowerShell (MinGW)": {
+            "path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "args": [
+                "-NoExit",
+                "-Command",
+                "& {",
+                "    $env:Path = \"c:\\MinGW\\bin;$env:Path\";",
+                "    Set-Alias -Name make -Value c:\\MinGW\\bin\\mingw32-make.exe -Scope Global;",
+                "    Write-Output \"Using MinGW binaries from c:\\MinGW\\bin\"",
+                "}"
+            ]
+        }
+    },
+    "terminal.integrated.defaultProfile.windows": "PowerShell (MinGW)",
+    "C_Cpp.default.compilerPath": "C:/MinGW/bin/gcc.exe",
+    "files.associations": {
+        "cmath": "cpp"
+    }
+}
