@@ -14,6 +14,10 @@
 // Maximum rise/dead time
 #define dt_max 10e-9
 
+// Constants
+#define const_2_sqrt3   1.154700538    // =2/sqrt(3)
+#define const_pi_6      0.523598775    // =PI/6
+
 extern "C" __declspec(dllexport) void (*bzero)(void *ptr, unsigned int count)   = 0;
 
 union uData
@@ -49,26 +53,19 @@ int __stdcall DllMain(void *module, unsigned int reason, void *reserved) { retur
 
 struct sSVPWM_MODEL
 {
-  // declare the structure here
-
-  double t_prev;
-  double t_nextE;
-  double t_mU_up;
-  double t_mV_up;
-  double t_mW_up;
-  double t_mU_down;
-  double t_mV_down;
-  double t_mW_down;
-  double t_next;
-  bool trigger;
-  bool s_U;
-  bool s_V;
-  bool s_W;
-  int sector;
-  double m_U;
-  double m_V;
-  double m_W;
-  long int ticks;
+   double delta_t;      // Maximum time step of simulation
+   double t_nextE;      // Time of next event
+   double t_mU_up;      // Time of U phase HIGH state
+   double t_mV_up;      // Time of V phase HIGH state
+   double t_mW_up;      // Time of W phase HIGH state
+   double t_mU_down;    // Time of U phase LOW state
+   double t_mV_down;    // Time of V phase LOW state
+   double t_mW_down;    // Time of W phase LOW state
+   double t_next_cycle; // Time of next PWM cycle
+   bool s_U;            // State of phase U
+   bool s_V;            // State of phase V
+   bool s_W;            // State of phase W
+   long int ticks;      // Number of PWM cycles completed
 };
 
 extern "C" __declspec(dllexport) void svpwm_model(struct sSVPWM_MODEL **opaque, double t, union uData *data)
@@ -80,6 +77,13 @@ extern "C" __declspec(dllexport) void svpwm_model(struct sSVPWM_MODEL **opaque, 
    bool  &V         = data[4].b; // output
    bool  &W         = data[5].b; // output
 
+   double a = 0;
+   double b = 0;
+   int sector = 0;
+   bool trigger = 0;
+
+   float mU, mV, mW;
+
    if(!*opaque)
    {
       *opaque = (struct sSVPWM_MODEL *) malloc(sizeof(struct sSVPWM_MODEL));
@@ -89,82 +93,127 @@ extern "C" __declspec(dllexport) void svpwm_model(struct sSVPWM_MODEL **opaque, 
 
 // Implement module evaluation code here:
 
-   // By default, set max time step according to next event
-   inst->delta_t = inst->t_nextE - t;
+    // By default, set max time step according to next event
+    inst->delta_t = inst->t_nextE - t;
 
-   // Verifies if an event has been reached
-   if(t >= inst->t_nextE){
+    // Verifies if an event has been reached
+    if(t >= inst->t_nextE){
 
-      // Trigger update if a cycle has been completed
-      if(t >= inst->t_next)
-         inst->trigger = 1;
+        // Trigger update if a cycle has been completed
+        if(t >= inst->t_next_cycle)
+            trigger = 1;
 
-      // Set next time step to defined rise/fall time
-      inst->delta_t = dt_max;
+        // Set next time step to defined rise/fall time
+        inst->delta_t = dt_max;
 
-      // Change corresponding output
-      if(not(inst->s_U))   // Phase U
-         if(t >= t_mU_up){
-            inst->s_U = 1;
-            U = 1;
+        // Change corresponding output and update phase status
+        if(not(inst->s_U))   // Phase U
+            if(t >= inst->t_mU_up){
+               inst->s_U = 1;
+               U = 1;
+            }
+        else
+            if(t >= inst->t_mU_down){
+               inst->s_U = 0;
+               U = 0;
+            }
+        if(not(inst->s_V))   // Phase V
+            if(t >= inst->t_mV_up){
+               inst->s_V = 1;
+               V = 1;
+            }
+        else
+            if(t >= inst->t_mV_down){
+               inst->s_V = 0;
+               V = 0;
+            }
+        if(not(inst->s_W))   // Phase W
+            if(t >= inst->t_mW_up){
+               inst->s_W = 1;
+               W = 1;
+            }
+        else
+            if(t >= inst->t_mW_down){
+               inst->s_W = 0;
+               W = 0;
+            }
+        
+        // Update next event
+        update_next_event(inst, t);
+    }
+
+
+    // Update event times after a PWM cycle is completed
+    if(trigger){
+         // Find sector
+         sector = int(6*Theta/(2*PI))+1;
+
+         // Auxiliary variables
+         a = const_2_sqrt3*Amplitude*cos(Theta+const_pi_6);
+         b = const_2_sqrt3*Amplitude*sin(Theta);
+
+         // Compute duty cycle of each phase
+         switch (sector){
+            case 1:
+               mU = (1+a+b)/2;
+               mV = (1-a+b)/2;
+               mW = (1-a-b)/2;
+               break;
+            case 2:
+               mU = (1+a-b)/2;
+               mV = (1+a+b)/2;
+               mW = (1-a-b)/2;
+               break;
+            case 3:
+               mU = (1-a-b)/2;
+               mV = (1+a+b)/2;
+               mW = (1-a+b)/2;
+               break;
+            case 4:
+               mU = (1-a-b)/2;
+               mV = (1+a-b)/2;
+               mW = (1+a+b)/2;
+               break;
+            case 5:
+               mU = (1-a+b)/2;
+               mV = (1-a-b)/2;
+               mW = (1+a+b)/2;
+               break;
+            case 6:
+               mU = (1+a+b)/2;
+               mV = (1-a-b)/2;
+               mW = (1+a-b)/2;
+               break;
+            default:
+               break;
          }
-      else
-         if(t >= t_mU_down){
-            inst->s_U = 0;
-            U = 0;
-         }
-      if(not(inst->s_V))   // Phase V
-         if(t >= t_mV_up){
-            inst->s_V = 1;
-            V = 1;
-         }
-      else
-         if(t >= t_mV_down){
-            inst->s_V = 0;
-            V = 0;
-         }
-      if(not(inst->s_W))   // Phase W
-         if(t >= t_mW_up){
-            inst->s_W = 1;
-            W = 1;
-         }
-      else
-         if(t >= t_mW_down){
-            inst->s_W = 0;
-            W = 0;
-         }
-      
-      // Update next event
-      update_next_event(inst);
-   }
 
+         // Define switching times
+         inst->t_mU_up = (inst->ticks+(1-mU)/2)*Tpwm;
+         inst->t_mU_down = (inst->ticks+(1+mU)/2)*Tpwm;
+         inst->t_mV_up = (inst->ticks+(1-mV)/2)*Tpwm;
+         inst->t_mV_down = (inst->ticks+(1+mV)/2)*Tpwm;
+         inst->t_mW_up = (inst->ticks+(1-mW)/2)*Tpwm;
+         inst->t_mW_down = (inst->ticks+(1+mW)/2)*Tpwm;
 
-   // Update after a PWM cycle is completed
-   
-   if(inst->trigger){
-      int new_sector = int(6*Theta/(2*PI))+1;
-      switch (inst->sector){
-      case 1:
-         /* code */
-         break;
+         // Next PWM cycle start
+         inst->t_next_cycle = (inst->ticks+1)*Tpwm;
 
-      default:
-         break;
-      }
-      
-      // Update event times
-      update_events(inst);
-      // Update tick count 
-      inst->ticks++;
-      // Reset trigger
-      inst->trigger = 0;
-   }
+         // Update tick count 
+         inst->ticks++;
+
+    }
 }
 
-// Update the next event
-void update_next_event(sSVPWM_MODEL *inst){
-   // Find next event
-   inst->t_nextE = fmin(inst->t_next, fmin(inst->t_min, fmin(inst->t_mU, fmin(inst->t_mV, inst->t_mW))));
+// Update time of the next event
+void update_next_event(sSVPWM_MODEL *inst, const double t){
+   // Find next event 
+   inst->t_nextE = fmin(fmax(inst->t_next_cycle,t), 
+      fmin(fmax(inst->t_mU_down,t), 
+         fmin(fmax(inst->t_mV_down,t), 
+            fmin(fmax(inst->t_mW_down,t), 
+               fmin(fmax(inst->t_mU_up,t), 
+                  fmin(fmax(inst->t_mV_up,t), fmax(inst->t_mW_up,t)))))));
    return;
 }
 
@@ -175,9 +224,11 @@ double fmin(double a, double b){
    return b;
 }
 
-// Update events
-void update_events(sSVPWM_MODEL *inst, double t){
-   t_
+// Find maximum
+double fmax(double a, double b){
+   if(a >= b)
+      return a;
+   return b;
 }
 
 extern "C" __declspec(dllexport) double MaxExtStepSize(struct sSVPWM_MODEL *inst, double t)
