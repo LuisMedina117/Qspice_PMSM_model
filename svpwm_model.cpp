@@ -5,7 +5,7 @@
 //    dmc -mn -WD svpwm_model.cpp kernel32.lib
 
 #include <malloc.h>
-#include <math.h>
+#include <cmath>
 
 #ifndef PI
 #define PI 3.14159265
@@ -42,12 +42,9 @@ union uData
 int __stdcall DllMain(void *module, unsigned int reason, void *reserved) { return 1; }
 
 // #undef pin names lest they collide with names in any header file(s) you might include.
-#undef HS_U
-#undef LS_U
-#undef HS_V
-#undef LS_V
-#undef HS_W
-#undef LS_W
+#undef U
+#undef V
+#undef W
 #undef Theta
 #undef Amplitude
 
@@ -93,64 +90,20 @@ extern "C" __declspec(dllexport) void svpwm_model(struct sSVPWM_MODEL **opaque, 
 
 // Implement module evaluation code here:
 
-    // By default, set max time step according to next event
-    inst->delta_t = inst->t_nextE - t;
+   // By default, set max time step according to next event
+   inst->delta_t = inst->t_nextE - t;
 
-    // Verifies if an event has been reached
-    if(t >= inst->t_nextE){
+   // Verifies if an event has been reached
+   if(t >= inst->t_nextE){
 
-        // Trigger update if a cycle has been completed
-        if(t >= inst->t_next_cycle)
-            trigger = 1;
-
-        // Set next time step to defined rise/fall time
-        inst->delta_t = dt_max;
-
-        // Change corresponding output and update phase status
-        if(not(inst->s_U))   // Phase U
-            if(t >= inst->t_mU_up){
-               inst->s_U = 1;
-               U = 1;
-            }
-        else
-            if(t >= inst->t_mU_down){
-               inst->s_U = 0;
-               U = 0;
-            }
-        if(not(inst->s_V))   // Phase V
-            if(t >= inst->t_mV_up){
-               inst->s_V = 1;
-               V = 1;
-            }
-        else
-            if(t >= inst->t_mV_down){
-               inst->s_V = 0;
-               V = 0;
-            }
-        if(not(inst->s_W))   // Phase W
-            if(t >= inst->t_mW_up){
-               inst->s_W = 1;
-               W = 1;
-            }
-        else
-            if(t >= inst->t_mW_down){
-               inst->s_W = 0;
-               W = 0;
-            }
-        
-        // Update next event
-        update_next_event(inst, t);
-    }
-
-
-    // Update event times after a PWM cycle is completed
-    if(trigger){
+      // Update event times after a PWM cycle is completed
+      if(t >= inst->t_next_cycle){
          // Find sector
          sector = int(6*Theta/(2*PI))+1;
 
          // Auxiliary variables
-         a = const_2_sqrt3*Amplitude*cos(Theta+const_pi_6);
-         b = const_2_sqrt3*Amplitude*sin(Theta);
+         a = 0.4;//const_2_sqrt3*Amplitude*cos(Theta+const_pi_6);
+         b = 0.4;//const_2_sqrt3*Amplitude*sin(Theta);
 
          // Compute duty cycle of each phase
          switch (sector){
@@ -200,21 +153,52 @@ extern "C" __declspec(dllexport) void svpwm_model(struct sSVPWM_MODEL **opaque, 
          inst->t_next_cycle = (inst->ticks+1)*Tpwm;
 
          // Update tick count 
-         inst->ticks++;
+         inst->ticks += 1;
+      }
 
-    }
-}
+      // Set next time step to defined rise/fall time
+      inst->delta_t = dt_max;
 
-// Update time of the next event
-void update_next_event(sSVPWM_MODEL *inst, const double t){
-   // Find next event 
-   inst->t_nextE = fmin(fmax(inst->t_next_cycle,t), 
-      fmin(fmax(inst->t_mU_down,t), 
-         fmin(fmax(inst->t_mV_down,t), 
-            fmin(fmax(inst->t_mW_down,t), 
-               fmin(fmax(inst->t_mU_up,t), 
-                  fmin(fmax(inst->t_mV_up,t), fmax(inst->t_mW_up,t)))))));
-   return;
+      // Change corresponding output and update phase status
+      if(not(inst->s_U))   // Phase U
+         if(t >= inst->t_mU_up){
+            inst->s_U = 1;
+            U = 1;
+         }
+      else
+         if(t >= inst->t_mU_down){
+            inst->s_U = 0;
+            U = 0;
+         }
+      if(not(inst->s_V))   // Phase V
+         if(t >= inst->t_mV_up){
+            inst->s_V = 1;
+            V = 1;
+         }
+      else
+         if(t >= inst->t_mV_down){
+            inst->s_V = 0;
+            V = 0;
+         }
+      if(not(inst->s_W))   // Phase W
+         if(t >= inst->t_mW_up){
+            inst->s_W = 1;
+            W = 1;
+         }
+      else
+         if(t >= inst->t_mW_down){
+            inst->s_W = 0;
+            W = 0;
+         }
+      
+      // Update next event
+      inst->t_nextE = fmin(fmax(inst->t_next_cycle,t), 
+         fmin(fmax(inst->t_mU_down,t), 
+            fmin(fmax(inst->t_mV_down,t), 
+               fmin(fmax(inst->t_mW_down,t), 
+                  fmin(fmax(inst->t_mU_up,t), 
+                     fmin(fmax(inst->t_mV_up,t), fmax(inst->t_mW_up,t)))))));
+   }
 }
 
 // Find minimum
