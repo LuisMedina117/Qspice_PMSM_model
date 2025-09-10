@@ -17,8 +17,12 @@
 // Constants
 #define const_2_sqrt3   1.154700538    // =2/sqrt(3)
 #define const_pi_6      0.523598775    // =PI/6
+#define const_pi_3      1.047197551    // =PI/3
 
 extern "C" __declspec(dllexport) void (*bzero)(void *ptr, unsigned int count)   = 0;
+
+double fmin(double, double);
+double f_eval(double);
 
 union uData
 {
@@ -77,14 +81,18 @@ extern "C" __declspec(dllexport) void svpwm_model(struct sSVPWM_MODEL **opaque, 
    double a = 0;
    double b = 0;
    int sector = 0;
-   bool trigger = 0;
+   bool slope = 0;
+   double theta_rel = 0;
 
-   float mU, mV, mW;
+   double mU, mV, mW;
 
    if(!*opaque)
    {
       *opaque = (struct sSVPWM_MODEL *) malloc(sizeof(struct sSVPWM_MODEL));
       bzero(*opaque, sizeof(struct sSVPWM_MODEL));
+      (*opaque)->t_nextE = Tpwm;
+      (*opaque)->t_next_cycle = Tpwm;
+      (*opaque)->ticks = 1;
    }
    struct sSVPWM_MODEL *inst = *opaque;
 
@@ -99,55 +107,58 @@ extern "C" __declspec(dllexport) void svpwm_model(struct sSVPWM_MODEL **opaque, 
       // Update event times after a PWM cycle is completed
       if(t >= inst->t_next_cycle){
          // Find sector
-         sector = int(6*Theta/(2*PI))+1;
+         sector = int(6.0*Theta/(2*PI))+1;
+
+         // Calculate relative angle inside sector
+         theta_rel = Theta - (sector-1)*const_pi_3;
 
          // Auxiliary variables
-         a = 0.4;//const_2_sqrt3*Amplitude*cos(Theta+const_pi_6);
-         b = 0.4;//const_2_sqrt3*Amplitude*sin(Theta);
+         a = const_2_sqrt3*Amplitude*cos(theta_rel+const_pi_6);
+         b = const_2_sqrt3*Amplitude*sin(theta_rel);
 
          // Compute duty cycle of each phase
          switch (sector){
             case 1:
-               mU = (1+a+b)/2;
-               mV = (1-a+b)/2;
-               mW = (1-a-b)/2;
+               mU = (1.0+a+b)/2.0;
+               mV = (1.0-a+b)/2.0;
+               mW = (1.0-a-b)/2.0;
                break;
             case 2:
-               mU = (1+a-b)/2;
-               mV = (1+a+b)/2;
-               mW = (1-a-b)/2;
+               mU = (1.0+a-b)/2.0;
+               mV = (1.0+a+b)/2.0;
+               mW = (1.0-a-b)/2.0;
                break;
             case 3:
-               mU = (1-a-b)/2;
-               mV = (1+a+b)/2;
-               mW = (1-a+b)/2;
+               mU = (1.0-a-b)/2.0;
+               mV = (1.0+a+b)/2.0;
+               mW = (1.0-a+b)/2.0;
                break;
             case 4:
-               mU = (1-a-b)/2;
-               mV = (1+a-b)/2;
-               mW = (1+a+b)/2;
+               mU = (1.0-a-b)/2.0;
+               mV = (1.0+a-b)/2.0;
+               mW = (1.0+a+b)/2.0;
                break;
             case 5:
-               mU = (1-a+b)/2;
-               mV = (1-a-b)/2;
-               mW = (1+a+b)/2;
+               mU = (1.0-a+b)/2.0;
+               mV = (1.0-a-b)/2.0;
+               mW = (1.0+a+b)/2.0;
                break;
             case 6:
-               mU = (1+a+b)/2;
-               mV = (1-a-b)/2;
-               mW = (1+a-b)/2;
+               mU = (1.0+a+b)/2.0;
+               mV = (1.0-a-b)/2.0;
+               mW = (1.0+a-b)/2.0;
                break;
             default:
                break;
          }
 
          // Define switching times
-         inst->t_mU_up = (inst->ticks+(1-mU)/2)*Tpwm;
-         inst->t_mU_down = (inst->ticks+(1+mU)/2)*Tpwm;
-         inst->t_mV_up = (inst->ticks+(1-mV)/2)*Tpwm;
-         inst->t_mV_down = (inst->ticks+(1+mV)/2)*Tpwm;
-         inst->t_mW_up = (inst->ticks+(1-mW)/2)*Tpwm;
-         inst->t_mW_down = (inst->ticks+(1+mW)/2)*Tpwm;
+         inst->t_mU_up = (inst->ticks+(1.0-mU)/2.0)*Tpwm;
+         inst->t_mU_down = (inst->ticks+(1.0+mU)/2.0)*Tpwm;
+         inst->t_mV_up = (inst->ticks+(1.0-mV)/2.0)*Tpwm;
+         inst->t_mV_down = (inst->ticks+(1.0+mV)/2.0)*Tpwm;
+         inst->t_mW_up = (inst->ticks+(1.0-mW)/2.0)*Tpwm;
+         inst->t_mW_down = (inst->ticks+(1.0+mW)/2.0)*Tpwm;
 
          // Next PWM cycle start
          inst->t_next_cycle = (inst->ticks+1)*Tpwm;
@@ -157,62 +168,73 @@ extern "C" __declspec(dllexport) void svpwm_model(struct sSVPWM_MODEL **opaque, 
       }
 
       // Set next time step to defined rise/fall time
-      inst->delta_t = dt_max;
+      inst->delta_t = dt_max;//
 
+      // Check slope
+      if(t < inst->t_next_cycle-0.5*Tpwm)
+         slope = 1;  // positive
+      else
+         slope = 0;  // negative
+      
       // Change corresponding output and update phase status
-      if(not(inst->s_U))   // Phase U
-         if(t >= inst->t_mU_up){
+      if(not(inst->s_U)){   // Phase U
+         if(t >= inst->t_mU_up && slope){
             inst->s_U = 1;
             U = 1;
          }
-      else
-         if(t >= inst->t_mU_down){
+      }
+      else{
+         if(t >= inst->t_mU_down && !slope){
             inst->s_U = 0;
             U = 0;
          }
-      if(not(inst->s_V))   // Phase V
-         if(t >= inst->t_mV_up){
+      }
+      if(not(inst->s_V)){   // Phase V
+         if(t >= inst->t_mV_up && slope){
             inst->s_V = 1;
             V = 1;
          }
-      else
-         if(t >= inst->t_mV_down){
+      }
+      else{
+         if(t >= inst->t_mV_down && !slope){
             inst->s_V = 0;
             V = 0;
          }
-      if(not(inst->s_W))   // Phase W
-         if(t >= inst->t_mW_up){
+      }
+      if(not(inst->s_W)){   // Phase W
+         if(t >= inst->t_mW_up && slope){
             inst->s_W = 1;
             W = 1;
          }
-      else
-         if(t >= inst->t_mW_down){
+      }
+      else{
+         if(t >= inst->t_mW_down && !slope){
             inst->s_W = 0;
             W = 0;
          }
-      
-      // Update next event
-      inst->t_nextE = fmin(fmax(inst->t_next_cycle,t), 
-         fmin(fmax(inst->t_mU_down,t), 
-            fmin(fmax(inst->t_mV_down,t), 
-               fmin(fmax(inst->t_mW_down,t), 
-                  fmin(fmax(inst->t_mU_up,t), 
-                     fmin(fmax(inst->t_mV_up,t), fmax(inst->t_mW_up,t)))))));
+      }
+
+      // Update next event      
+      inst->t_nextE = t + fmin(f_eval(inst->t_next_cycle-t), 
+         fmin(f_eval(inst->t_mU_down-t), 
+            fmin(f_eval(inst->t_mV_down-t), 
+               fmin(f_eval(inst->t_mW_down-t), 
+                  fmin(f_eval(inst->t_mU_up-t), 
+                     fmin(f_eval(inst->t_mV_up-t), f_eval(inst->t_mW_up-t)))))));
+
    }
 }
 
 // Find minimum
 double fmin(double a, double b){
-   if(a <= b)
-      return a;
+   if(a <= b) return a;
    return b;
 }
 
-// Find maximum
-double fmax(double a, double b){
-   if(a >= b)
-      return a;
-   return b;
+// Evaluate wether to ignore value from minimum calculation
+double f_eval(double a){
+   if(a <= 0) return 1e10;
+   return a;
 }
 
 extern "C" __declspec(dllexport) double MaxExtStepSize(struct sSVPWM_MODEL *inst, double t)
