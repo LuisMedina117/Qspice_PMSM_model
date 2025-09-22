@@ -84,6 +84,9 @@ extern "C" __declspec(dllexport) void pmsm_model_dll(struct sPMSM_MODEL_DLL **op
    double &y_vd  = data[20].d; // output
    double &y_vq  = data[21].d; // output
 
+   double cos_U, cos_V, cos_W;
+   double sin_U, sin_V, sin_W;
+
    if(!*opaque)
    {
       *opaque = (struct sPMSM_MODEL_DLL *) malloc(sizeof(struct sPMSM_MODEL_DLL));
@@ -116,14 +119,21 @@ extern "C" __declspec(dllexport) void pmsm_model_dll(struct sPMSM_MODEL_DLL **op
    inst->x_th_n1 = y_th;
    inst->y_tq_n1 = y_tq;
 
+   cos_U = cos(y_th*pp);
+   cos_V = cos(y_th*pp-2.0*PI/3.0);
+   cos_W = cos(y_th*pp+2.0*PI/3.0);
+   sin_U = sin(y_th*pp);
+   sin_V = sin(y_th*pp-2.0*PI/3.0);
+   sin_W = sin(y_th*pp+2.0*PI/3.0);
+
    // Voltage transformation
-   y_vd = 2.0/3.0*(cos(y_th*pp)*u_vU +cos(y_th*pp-2.0*PI/3.0)*u_vV +cos(y_th*pp+2.0*PI/3.0)*u_vW);
-   y_vq = -2.0/3.0*(sin(y_th*pp)*u_vU +sin(y_th*pp-2.0*PI/3.0)*u_vV +sin(y_th*pp+2.0*PI/3.0)*u_vW);
+   y_vd = 2.0/3.0*(cos_U*u_vU +cos_V*u_vV +cos_W*u_vW);
+   y_vq = -2.0/3.0*(sin_U*u_vU +sin_V*u_vV +sin_W*u_vW);
 
    // Current transformation
-   y_iU = cos(y_th*pp)*u_id -sin(y_th*pp)*u_iq;
-   y_iV = cos(y_th*pp-2.0*PI/3.0)*u_id -sin(y_th*pp-2.0*PI/3.0)*u_iq;
-   y_iW = cos(y_th*pp+2.0*PI/3.0)*u_id -sin(y_th*pp+2.0*PI/3.0)*u_iq;
+   y_iU = cos_U*u_id -sin_U*u_iq;
+   y_iV = cos_V*u_id -sin_V*u_iq;
+   y_iW = cos_W*u_id -sin_W*u_iq;
 
 }
 

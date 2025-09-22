@@ -11,7 +11,7 @@
 #define PI 3.14159265
 #endif
 
-// Maximum rise/dead time
+// Maximum rise/fall time
 #define dt_max 10e-9
 
 // Constants
