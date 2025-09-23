@@ -113,8 +113,10 @@ extern "C" __declspec(dllexport) void svpwm_model(struct sSVPWM_MODEL **opaque, 
          theta_rel = Theta - (sector-1)*const_pi_3;
 
          // Auxiliary variables
-         a = const_2_sqrt3*Amplitude*cos(theta_rel+const_pi_6);
-         b = const_2_sqrt3*Amplitude*sin(theta_rel);
+         //a = const_2_sqrt3*Amplitude*cos(theta_rel+const_pi_6);
+         //b = const_2_sqrt3*Amplitude*sin(theta_rel);
+         a = Amplitude*cos(theta_rel+const_pi_6);
+         b = Amplitude*sin(theta_rel);
 
          // Compute duty cycle of each phase
          switch (sector){

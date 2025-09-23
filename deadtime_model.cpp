@@ -204,6 +204,7 @@ extern "C" __declspec(dllexport) double MaxExtStepSize(struct sDEADTIME_MODEL *i
 {
    //return 1e308; // implement a good choice of max timestep size that depends on struct sSVPWM_MODEL
    if (inst->delta_t <= 0) return 1e308;
+   if (inst->delta_t <= dt_max) return dt_max;
    return inst->delta_t;
 }
 
