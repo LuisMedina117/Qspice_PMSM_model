@@ -51,12 +51,12 @@ int __stdcall DllMain(void *module, unsigned int reason, void *reserved) { retur
 
 struct sPMSM_MODEL_DLL
 {
-  // declare the structure here
-  double x_th_n1;    // Previous theta
-  double x_w_n1;     // Previous omega
-  double y_tq_n1;    // Previous torque
-  double t_n1;       // Previous time
-  bool initialized;  // Initialization flag
+   // declare the structure here
+   double x_th_n1;    // Previous theta
+   double x_w_n1;     // Previous omega
+   double y_tq_n1;    // Previous torque
+   double t_n1;       // Previous time
+   bool initialized;  // Initialization flag
 };
 
 extern "C" __declspec(dllexport) void pmsm_model_dll(struct sPMSM_MODEL_DLL **opaque, double t, union uData *data)

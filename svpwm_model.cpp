@@ -77,6 +77,7 @@ extern "C" __declspec(dllexport) void svpwm_model(struct sSVPWM_MODEL **opaque, 
    bool  &U         = data[3].b; // output
    bool  &V         = data[4].b; // output
    bool  &W         = data[5].b; // output
+   bool  &Sync      = data[6].b; // output
 
    double a = 0;
    double b = 0;
@@ -167,6 +168,9 @@ extern "C" __declspec(dllexport) void svpwm_model(struct sSVPWM_MODEL **opaque, 
 
          // Update tick count 
          inst->ticks += 1;
+
+         // Sync signal
+         Sync = 1;
       }
 
       // Set next time step to defined rise/fall time
@@ -224,6 +228,10 @@ extern "C" __declspec(dllexport) void svpwm_model(struct sSVPWM_MODEL **opaque, 
                   fmin(f_eval(inst->t_mU_up-t), 
                      fmin(f_eval(inst->t_mV_up-t), f_eval(inst->t_mW_up-t)))))));
 
+   }
+   else{
+      // Sync signal
+      Sync = 0;
    }
 }
 
