@@ -112,8 +112,8 @@ extern "C" __declspec(dllexport) void foc_model(struct sFOC_MODEL **opaque, doub
       error_d = id_ref - id;
       error_q = iq_ref - iq;
       // PI controller with backtracking
-      inst->it_d = inst->it_d + Ts*error_d;// - 0.1*Ts*bkt_d;
-      inst->it_q = inst->it_q + Ts*error_q;// - 0.1*Ts*bkt_q;
+      inst->it_d = inst->it_d + Ts*error_d - 0.1*Ts*bkt_d;
+      inst->it_q = inst->it_q + Ts*error_q - 0.1*Ts*bkt_q;
       vd_ref = Kp*error_d +Ki*inst->it_d;
       vq_ref = Kp*error_q +Ki*inst->it_q;
       // Feedforward compensation
@@ -123,13 +123,13 @@ extern "C" __declspec(dllexport) void foc_model(struct sFOC_MODEL **opaque, doub
       V_th = atan2(vq_ref, vd_ref);
       // Compute reference vector magnitude and saturate
       V_mag_nosat = sqrt(vd_ref*vd_ref + vq_ref*vq_ref);
-      if(V_mag_nosat > Vdc/const_sqrt3)
+      V_mag = V_mag_nosat/(Vdc/const_sqrt3);
+      if(V_mag > 1.0){
          V_mag = 1.0;
-      else
-         V_mag = V_mag_nosat/(Vdc/const_sqrt3);
+      }
       // Compute terms for backtracking
-      bkt_d = vd_ref - V_mag*(Vdc/const_sqrt3)*cos(V_th);
-      bkt_q = vq_ref - V_mag*(Vdc/const_sqrt3)*sin(V_th);
+      bkt_d = vd_ref - vd_ref*(Vdc/const_sqrt3)*V_mag/V_mag_nosat;
+      bkt_q = vq_ref - vq_ref*(Vdc/const_sqrt3)*V_mag/V_mag_nosat;
 
       // Compute absolute reference vector angle
       angle = V_th + theta*double(pp);
