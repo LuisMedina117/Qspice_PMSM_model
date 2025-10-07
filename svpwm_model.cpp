@@ -15,9 +15,9 @@
 #define dt_max 10e-9
 
 // Constants
-#define const_2_sqrt3   1.154700538    // =2/sqrt(3)
-#define const_pi_6      0.523598775    // =PI/6
-#define const_pi_3      1.047197551    // =PI/3
+#define const_2_sqrt3   1.15470053838   // =2/sqrt(3)
+#define const_pi_6      0.5235987756    // =PI/6
+#define const_pi_3      1.0471975512    // =PI/3
 
 extern "C" __declspec(dllexport) void (*bzero)(void *ptr, unsigned int count)   = 0;
 

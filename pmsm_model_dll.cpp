@@ -8,7 +8,7 @@
 #include <math.h>
 
 #ifndef PI
-#define PI 3.14159265
+#define PI 3.14159265359
 #endif
 
 extern "C" __declspec(dllexport) void (*bzero)(void *ptr, unsigned int count)   = 0;
@@ -87,6 +87,9 @@ extern "C" __declspec(dllexport) void pmsm_model_dll(struct sPMSM_MODEL_DLL **op
    double cos_U, cos_V, cos_W;
    double sin_U, sin_V, sin_W;
 
+   double k1_w,k2_w,k3_w,k4_w;
+   double k1_t,k2_t,k3_t,k4_t;
+
    if(!*opaque)
    {
       *opaque = (struct sPMSM_MODEL_DLL *) malloc(sizeof(struct sPMSM_MODEL_DLL));
@@ -104,11 +107,23 @@ extern "C" __declspec(dllexport) void pmsm_model_dll(struct sPMSM_MODEL_DLL **op
    double t_step = t-inst->t_n1;
    // Torque calculation
    y_tq = 3.0/2.0*pp*(u_iq*(u_id*Ld+Psi)-u_id*u_iq*Lq);
-   // Integration using trapezoidal rule
-   // State omega
-   y_w = (t_step/2.0*(-B*inst->x_w_n1 +y_tq +inst->y_tq_n1 -Tload) +J*inst->x_w_n1)/(J+B*t_step/2.0);
+/*    // Integration using trapezoidal rule
    // State theta
    y_th = t_step/2.0*(y_w +inst->x_w_n1) +inst->x_th_n1;
+   // State omega
+   y_w = (t_step/2.0*(-B*inst->x_w_n1 +y_tq +inst->y_tq_n1 -2.0*Tload) +J*inst->x_w_n1)/(J+B*t_step/2.0); */
+   // Integrate using RK4
+   k1_w = (-B*inst->x_w_n1 +inst->y_tq_n1 -Tload)/J;
+   k1_t = inst->x_w_n1;
+   k2_w = (-B*(inst->x_w_n1+k1_w*t_step/2.0) +inst->y_tq_n1 -Tload)/J;
+   k2_t = inst->x_w_n1+k1_w*t_step/2.0;
+   k3_w = (-B*(inst->x_w_n1+k2_w*t_step/2.0) +inst->y_tq_n1 -Tload)/J;
+   k3_t = inst->x_w_n1+k2_w*t_step/2.0;
+   k3_w = (-B*(inst->x_w_n1+k3_w*t_step) +inst->y_tq_n1 -Tload)/J;
+   k3_t = inst->x_w_n1+k3_w*t_step;
+   y_th = inst->x_th_n1 + t_step*(k1_t+2.0*k2_t+2.0*k3_t+k4_t)/6.0;
+   y_w =  inst->x_w_n1+ t_step*(k1_w+2.0*k2_w+2.0*k3_w+k4_w)/6.0;
+
    // Wrap to 2*pi
    if(y_th > 2.0*PI){
       y_th = y_th - 2.0*PI;
@@ -118,6 +133,10 @@ extern "C" __declspec(dllexport) void pmsm_model_dll(struct sPMSM_MODEL_DLL **op
    inst->x_w_n1 = y_w;
    inst->x_th_n1 = y_th;
    inst->y_tq_n1 = y_tq;
+   // Wrap theta to 0 when > 2PI
+   if(inst->x_th_n1 > 2*PI){
+      inst->x_th_n1 = inst->x_th_n1 - 2*PI;
+   }
 
    cos_U = cos(y_th*pp);
    cos_V = cos(y_th*pp-2.0*PI/3.0);

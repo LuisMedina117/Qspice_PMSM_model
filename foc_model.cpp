@@ -2,18 +2,18 @@
 //
 // To build with Digital Mars C++ Compiler: 
 //
-//    dmc -mn -WD foc_model.cfloat(pp) kernel32.lib
+//    dmc -mn -WD foc_model.cpp kernel32.lib
 
 #include <malloc.h>
-#include <cmath>
+#include <math.h>
 
 #ifndef PI
-#define PI 3.14159265
+#define PI 3.14159265359
 #endif
 
 // Constants
-#define const_2pi_3     2.094395102    // =2*PI/3
-#define const_sqrt3     1.732050807    // sqrt(3)
+#define const_2pi_3     2.09439510239    // 2*PI/3
+#define const_sqrt3     1.73205080757    // sqrt(3)
 
 extern "C" __declspec(dllexport) void (*bzero)(void *ptr, unsigned int count)   = 0;
 
@@ -44,15 +44,21 @@ int __stdcall DllMain(void *module, unsigned int reason, void *reserved) { retur
 #undef i_W
 #undef omega
 #undef theta
-#undef Vref_th
-#undef Vref_mag
+#undef V_th
+#undef V_mag
 #undef Sync
+#undef id_ref
+#undef iq_ref
+#undef Vdc
+#undef dbg
 
 struct sFOC_MODEL
 {
    bool sync_p;
    double it_d;
    double it_q;
+   double bkt_d;
+   double bkt_q;
 };
 
 extern "C" __declspec(dllexport) void foc_model(struct sFOC_MODEL **opaque, double t, union uData *data)
@@ -82,7 +88,6 @@ extern "C" __declspec(dllexport) void foc_model(struct sFOC_MODEL **opaque, doub
    double error_d, error_q;
    double vd_ref, vq_ref;
    double V_mag_nosat;
-   double bkt_d, bkt_q;
    double angle;
 
    if(!*opaque)
@@ -112,15 +117,13 @@ extern "C" __declspec(dllexport) void foc_model(struct sFOC_MODEL **opaque, doub
       error_d = id_ref - id;
       error_q = iq_ref - iq;
       // PI controller with backtracking
-      inst->it_d = inst->it_d + Ts*error_d - 0.1*Ts*bkt_d;
-      inst->it_q = inst->it_q + Ts*error_q - 0.1*Ts*bkt_q;
+      inst->it_d = inst->it_d + Ts*error_d - 0.1*Ts*inst->bkt_d;
+      inst->it_q = inst->it_q + Ts*error_q - 0.1*Ts*inst->bkt_q;
       vd_ref = Kp*error_d +Ki*inst->it_d;
       vq_ref = Kp*error_q +Ki*inst->it_q;
       // Feedforward compensation
       vd_ref = vd_ref - omega*double(pp)*Lq*iq_ref;
       vq_ref = vq_ref + omega*double(pp)*(Ld*id_ref + Psi);
-      // Compute relative reference vector angle
-      V_th = atan2(vq_ref, vd_ref);
       // Compute reference vector magnitude and saturate
       V_mag_nosat = sqrt(vd_ref*vd_ref + vq_ref*vq_ref);
       V_mag = V_mag_nosat/(Vdc/const_sqrt3);
@@ -128,9 +131,11 @@ extern "C" __declspec(dllexport) void foc_model(struct sFOC_MODEL **opaque, doub
          V_mag = 1.0;
       }
       // Compute terms for backtracking
-      bkt_d = vd_ref - vd_ref*(Vdc/const_sqrt3)*V_mag/V_mag_nosat;
-      bkt_q = vq_ref - vq_ref*(Vdc/const_sqrt3)*V_mag/V_mag_nosat;
-
+      inst->bkt_d = vd_ref - vd_ref*(Vdc/const_sqrt3)*V_mag/V_mag_nosat;
+      inst->bkt_q = vq_ref - vq_ref*(Vdc/const_sqrt3)*V_mag/V_mag_nosat;
+      // Compute relative reference vector angle
+      V_th = atan2(vq_ref/V_mag_nosat, vd_ref/V_mag_nosat +1e-12);
+      V_th = V_th + 1.5*Ts*omega*double(pp);
       // Compute absolute reference vector angle
       angle = V_th + theta*double(pp);
       if(angle > 2*PI){
