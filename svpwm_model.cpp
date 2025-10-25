@@ -1,4 +1,4 @@
-// Automatically generated C++ file on Tue Aug 26 21:46:54 2025
+// Automatically generated C++ file on Wed Oct 22 18:41:58 2025
 //
 // To build with Digital Mars C++ Compiler: 
 //
@@ -51,6 +51,10 @@ int __stdcall DllMain(void *module, unsigned int reason, void *reserved) { retur
 #undef W
 #undef Theta
 #undef Amplitude
+#undef Sync
+#undef i_U
+#undef i_V
+#undef i_W
 
 struct sSVPWM_MODEL
 {
@@ -67,17 +71,27 @@ struct sSVPWM_MODEL
    bool s_V;            // State of phase V
    bool s_W;            // State of phase W
    long int ticks;      // Number of PWM cycles completed
+   bool s_dtU;          // State of dead time of phase U (polarity)
+   bool s_dtV;          // State of dead time of phase V (polarity)
+   bool s_dtW;          // State of dead time of phase W (polarity)
+   double m_comp;       // Dead time compensation on mod. index
 };
 
 extern "C" __declspec(dllexport) void svpwm_model(struct sSVPWM_MODEL **opaque, double t, union uData *data)
 {
-   double Theta     = data[0].d; // input
-   double Amplitude = data[1].d; // input
-   double Tpwm      = data[2].d; // input parameter
-   bool  &U         = data[3].b; // output
-   bool  &V         = data[4].b; // output
-   bool  &W         = data[5].b; // output
-   bool  &Sync      = data[6].b; // output
+   double  Theta     = data[ 0].d; // input
+   double  Amplitude = data[ 1].d; // input
+   double  i_U       = data[ 2].d; // input
+   double  i_V       = data[ 3].d; // input
+   double  i_W       = data[ 4].d; // input
+   double  Tpwm      = data[ 5].d; // input parameter
+   double  I_hys     = data[ 6].d; // input parameter
+   double  Tdead     = data[ 7].d; // input parameter
+   bool   &U         = data[ 8].b; // output
+   bool   &V         = data[ 9].b; // output
+   bool   &W         = data[10].b; // output
+   bool   &Sync      = data[11].b; // output
+   double &dbg       = data[12].d; // output
 
    double a = 0;
    double b = 0;
@@ -94,6 +108,7 @@ extern "C" __declspec(dllexport) void svpwm_model(struct sSVPWM_MODEL **opaque, 
       (*opaque)->t_nextE = Tpwm;
       (*opaque)->t_next_cycle = Tpwm;
       (*opaque)->ticks = 1;
+      (*opaque)->m_comp = Tdead/Tpwm;
    }
    struct sSVPWM_MODEL *inst = *opaque;
 
@@ -154,6 +169,58 @@ extern "C" __declspec(dllexport) void svpwm_model(struct sSVPWM_MODEL **opaque, 
             default:
                break;
          }
+
+         // Dead time compensation
+         if(Tdead > 100e-9){
+
+            // Hysteresis for polarity detection
+            if(inst->s_dtU){
+               if(i_U < -I_hys){
+                  inst->s_dtU = 0;}
+            }
+            else{
+               if(i_U > I_hys){
+                  inst->s_dtU = 1;}
+            }
+            if(inst->s_dtV){
+               if(i_V < -I_hys){
+                  inst->s_dtV = 0;}
+            }
+            else{
+               if(i_V > I_hys){
+                  inst->s_dtV = 1;}
+            }
+            if(inst->s_dtW){
+               if(i_W < -I_hys){
+                  inst->s_dtW = 0;}
+            }
+            else{
+               if(i_W > I_hys){
+                  inst->s_dtW = 1;}
+            }
+
+            // Compensation based on polarity
+            if(inst->s_dtU)
+               mU = mU - inst->m_comp;
+            else
+               mU = mU + inst->m_comp;
+            if(inst->s_dtV)
+               mV = mV - inst->m_comp;
+            else
+               mV = mV + inst->m_comp;
+            if(inst->s_dtW)
+               mW = mW - inst->m_comp;
+            else
+               mW = mW + inst->m_comp;
+         }
+
+         // Limit modulation index
+         if(mU > 0.995)
+            mU = 0.995;
+         if(mV > 0.995)
+            mV = 0.995;
+         if(mW > 0.995)
+            mW = 0.995;
 
          // Define switching times
          inst->t_mU_up = (inst->ticks+(1.0-mU)/2.0)*Tpwm;

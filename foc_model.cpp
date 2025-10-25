@@ -127,8 +127,8 @@ extern "C" __declspec(dllexport) void foc_model(struct sFOC_MODEL **opaque, doub
       // Compute reference vector magnitude and saturate
       V_mag_nosat = sqrt(vd_ref*vd_ref + vq_ref*vq_ref);
       V_mag = V_mag_nosat/(Vdc/const_sqrt3);
-      if(V_mag > 1.0){
-         V_mag = 1.0;
+      if(V_mag > 0.995){
+         V_mag = 0.995;
       }
       // Compute terms for backtracking
       inst->bkt_d = vd_ref - vd_ref*(Vdc/const_sqrt3)*V_mag/V_mag_nosat;
