@@ -91,7 +91,6 @@ extern "C" __declspec(dllexport) void svpwm_model(struct sSVPWM_MODEL **opaque, 
    bool   &V         = data[ 9].b; // output
    bool   &W         = data[10].b; // output
    bool   &Sync      = data[11].b; // output
-   double &dbg       = data[12].d; // output
 
    double a = 0;
    double b = 0;
@@ -201,17 +200,17 @@ extern "C" __declspec(dllexport) void svpwm_model(struct sSVPWM_MODEL **opaque, 
 
             // Compensation based on polarity
             if(inst->s_dtU)
-               mU = mU - inst->m_comp;
-            else
                mU = mU + inst->m_comp;
+            else
+               mU = mU - inst->m_comp;
             if(inst->s_dtV)
-               mV = mV - inst->m_comp;
-            else
                mV = mV + inst->m_comp;
-            if(inst->s_dtW)
-               mW = mW - inst->m_comp;
             else
+               mV = mV - inst->m_comp;
+            if(inst->s_dtW)
                mW = mW + inst->m_comp;
+            else
+               mW = mW - inst->m_comp;
          }
 
          // Limit modulation index
